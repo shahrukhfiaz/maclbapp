@@ -11,6 +11,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Hide admin tabs initially
     hideAdminTabs();
     
+    // Ensure all modals are hidden on page load
+    const modals = ['addPaymentModal', 'setTrialModal', 'setBillingCycleModal', 'paymentHistoryModal'];
+    modals.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    });
+    
     if (authToken) {
         // Try to validate the token and auto-login
         validateTokenAndLogin();
