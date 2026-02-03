@@ -1,6 +1,6 @@
 # DAT Loadboard - Complete Project Context
 
-**Last Updated:** 2025-01-XX  
+**Last Updated:** 2025-02-03  
 **Project Version:** 1.0.0  
 **Project Type:** Electron Desktop Application + Node.js/Express Backend Server
 
@@ -265,7 +265,7 @@ DAT APP/
 
 **Environment Variables**:
 - `CLOUD_PROXY_ENABLED` - Enable/disable proxy
-- `CLOUD_SERVER_IP` - Proxy server IP (default: 67.205.189.32)
+- `CLOUD_SERVER_IP` - Proxy server IP (default: 167.99.147.118)
 - `CLOUD_PROXY_PORT` - Proxy port (default: 3128 for Squid)
 - `PROXY_USERNAME` / `PROXY_PASSWORD` - Proxy auth credentials
 
@@ -331,7 +331,7 @@ DAT APP/
 - `appError.ts` - Custom error class for operational errors
 
 **Key Services**:
-- `auth.service.ts` - Authentication & JWT, single session enforcement
+- `auth.service.ts` - Authentication & JWT, single session enforcement, billing status checks
 - `session.service.ts` - Session CRUD operations
 - `sessionBundle.service.ts` - Bundle upload/download, presigned URLs
 - `sharedSession.service.ts` - Shared session logic (all users share one session)
@@ -342,6 +342,7 @@ DAT APP/
 - `loginHistory.service.ts` - Login attempt tracking with geolocation
 - `securityAlert.service.ts` - Security alerts (multiple device login, suspicious location, etc.)
 - `sessionActivity.service.ts` - Active session tracking and monitoring
+- `billing.service.ts` - Billing cycle management, payment tracking, trial periods, auto-disable expired accounts
 
 **Key Controllers**:
 - `auth.controller.ts` - Login, refresh, session status, user details (me)
@@ -352,6 +353,7 @@ DAT APP/
 - `securityAlert.controller.ts` - Security alerts management (read, dismiss, stats)
 - `audit.controller.ts` - Audit log listing (admin)
 - `domain.controller.ts` - Domain CRUD (admin)
+- `billing.controller.ts` - Billing operations (start cycle, add payment, set trial, get status, history, expired accounts)
 
 **Background Jobs**:
 - `sessionSeeder.worker.ts` - Playwright-based automated DAT session seeding
@@ -359,6 +361,10 @@ DAT APP/
   - Captures session profile
   - Uploads to cloud storage
   - Requires DAT_MASTER_USERNAME and DAT_MASTER_PASSWORD
+- `billing.job.ts` - Automated billing management (cron job)
+  - Runs hourly to check for expired accounts and trials
+  - Automatically disables accounts when billing cycle or trial expires
+  - Uses node-cron for scheduling
 
 ---
 
@@ -368,7 +374,7 @@ DAT APP/
 
 ```env
 # API Configuration
-API_BASE_URL=http://67.205.189.32:3000/api/v1
+API_BASE_URL=http://167.99.147.118:3000/api/v1
 APP_BRAND_NAME=DAT Loadboard
 
 # DAT Configuration
@@ -376,7 +382,7 @@ DEFAULT_DAT_URL=https://one.dat.com/search-loads
 
 # Proxy Configuration
 CLOUD_PROXY_ENABLED=true
-CLOUD_SERVER_IP=67.205.189.32
+CLOUD_SERVER_IP=167.99.147.118
 CLOUD_PROXY_PORT=3128
 CLOUD_PROXY_USERNAME=your-username
 CLOUD_PROXY_PASSWORD=your-password
@@ -408,16 +414,16 @@ JWT_REFRESH_EXPIRES_IN=7d
 BCRYPT_SALT_ROUNDS=12
 
 # CORS Configuration
-CORS_ORIGIN=http://67.205.189.32:3000,http://localhost:3000,https://67.205.189.32
+CORS_ORIGIN=http://167.99.147.118:3000,http://localhost:3000,https://167.99.147.118
 
 # Super Admin Bootstrap
 SUPER_ADMIN_EMAIL=superadmin@digitalstorming.com
 SUPER_ADMIN_PASSWORD=ChangeMeSuperSecure123!
 
 # DigitalOcean Spaces Configuration
-OBJECT_STORAGE_ENDPOINT=https://nyc3.digitaloceanspaces.com
-OBJECT_STORAGE_BUCKET=ds-loadboard-sessions-v2
-OBJECT_STORAGE_ACCESS_KEY=DO801A9KCTV9U2VCGQW4
+OBJECT_STORAGE_ENDPOINT=https://dat-commercial-2.nyc3.digitaloceanspaces.com
+OBJECT_STORAGE_BUCKET=dat-commercial-2
+OBJECT_STORAGE_ACCESS_KEY=DO8016G6D2TBEEGNXR92
 OBJECT_STORAGE_SECRET_KEY=...
 OBJECT_STORAGE_REGION=nyc3
 
@@ -462,7 +468,7 @@ LOG_LEVEL=info
 ### Session Capture Configuration (`session-config.env`)
 
 ```env
-API_BASE_URL=http://67.205.189.32:3000/api/v1
+API_BASE_URL=http://167.99.147.118:3000/api/v1
 API_EMAIL=superadmin@dat.com
 API_PASSWORD=ChangeMeSuperSecure123!
 SESSION_ID=cmgsg863g0001tpngelspcz9k
@@ -702,7 +708,7 @@ session-{sessionId}/
 ### Proxy Setup
 
 **Type**: HTTP Proxy (Squid)  
-**Server**: 67.205.189.32:3128  
+**Server**: 167.99.147.118:3128  
 **Purpose**: IP masking (all DAT traffic appears from proxy IP)
 
 **Configuration**:
@@ -735,6 +741,8 @@ session-{sessionId}/
 - `LogLevel`: INFO, WARN, ERROR
 - `SecurityAlertType`: MULTIPLE_DEVICE_LOGIN, SUSPICIOUS_LOCATION, FORCED_LOGOUT, FAILED_LOGIN_ATTEMPT
 - `SecurityAlertSeverity`: LOW, MEDIUM, HIGH, CRITICAL
+- `BillingCycle`: DAILY, WEEKLY, MONTHLY, THREE_MONTHS, HALF_YEAR, YEARLY
+- `PaymentStatus`: PAID, UNPAID, PENDING, REFUNDED
 
 **User**:
 ```prisma
@@ -747,6 +755,15 @@ model User {
   lastLoginAt          DateTime?
   lastLoginIP          String?
   currentSessionToken  String?           # For single session enforcement
+  billingCycle         BillingCycle?     # User's billing cycle type
+  billingCycleStartDate DateTime?        # When current billing cycle started
+  billingCycleEndDate   DateTime?        # When current billing cycle ends
+  trialPeriodHours     Int?              # Trial period in hours
+  trialStartDate       DateTime?         # When trial started
+  trialEndDate         DateTime?         # When trial ends
+  isTrialActive        Boolean           @default(false) # Is trial currently active
+  isBillingActive      Boolean           @default(true)   # Is billing active (not expired)
+  lastBillingCheckAt  DateTime?          # Last time billing was checked
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
   sessions             DatSession[]      @relation("SessionAssignedUser")
@@ -754,6 +771,8 @@ model User {
   loginHistory         LoginHistory[]
   sessionActivities    SessionActivity[]
   securityAlerts       SecurityAlert[]
+  payments             Payment[]         # Payment history
+  billingHistory       BillingHistory[]  # Billing action history
 }
 ```
 
@@ -915,6 +934,44 @@ model DatSessionLog {
 }
 ```
 
+**Payment**:
+```prisma
+model Payment {
+  id            String        @id @default(cuid())
+  userId        String
+  amount        Decimal       # Payment amount
+  billingCycle  BillingCycle  # Cycle type for this payment
+  status        PaymentStatus @default(PAID)
+  paymentDate   DateTime      @default(now())
+  cycleStartDate DateTime     # When this payment's cycle starts
+  cycleEndDate   DateTime     # When this payment's cycle ends
+  memo          String?       # Admin notes/memo
+  createdBy     String?       # Admin who created the payment
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([status])
+  @@index([paymentDate])
+  @@index([cycleEndDate])
+}
+```
+
+**BillingHistory**:
+```prisma
+model BillingHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String   # e.g., 'PAYMENT_ADDED', 'TRIAL_STARTED', 'CYCLE_STARTED', 'ACCOUNT_DISABLED'
+  details   Json?    # Additional context (amount, cycle, etc.)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+```
+
 ---
 
 ## 🌍 API Endpoints
@@ -1054,6 +1111,39 @@ model DatSessionLog {
   - Body: `{ label?, baseUrl?, description?, isMaintenance? }`
 - `DELETE /api/v1/domains/:id` - Delete domain
 
+### Billing (Admin Only)
+
+- `POST /api/v1/billing/:userId/start-cycle` - Start billing cycle for user
+  - Body: `{ cycle: BillingCycle, startDate?: DateTime }`
+  - Calculates end date based on cycle type
+  - Creates billing history entry
+
+- `POST /api/v1/billing/:userId/add-payment` - Add payment for user
+  - Body: `{ cycle: BillingCycle, amount: Decimal, memo?: string }`
+  - Starts billing cycle if not already active
+  - Creates payment record and billing history entry
+
+- `GET /api/v1/billing/:userId/status` - Get user billing status
+  - Returns: `{ user: {...}, isExpired: boolean, isTrialActive: boolean, daysRemaining: number, ... }`
+
+- `GET /api/v1/billing/:userId/payments` - Get payment history for user
+  - Returns: `{ payments: Payment[] }`
+
+- `GET /api/v1/billing/:userId/history` - Get billing history for user
+  - Returns: `{ history: BillingHistory[] }`
+
+- `POST /api/v1/billing/:userId/set-trial` - Set trial period for user
+  - Body: `{ hours: number }`
+  - Starts trial period from now
+  - Creates billing history entry
+
+- `GET /api/v1/billing/expired` - Get count of expired accounts (Admin only)
+  - Returns: `{ total: number }`
+
+- `POST /api/v1/billing/check-expired` - Check and disable expired accounts (Admin only)
+  - Automatically disables all expired accounts
+  - Returns: `{ disabled: number }`
+
 ### Health Check
 
 - `GET /api/v1/healthz` - Application health status
@@ -1065,11 +1155,12 @@ model DatSessionLog {
 
 ### Server Deployment
 
-**Server IP**: 67.205.189.32  
+**Server IP**: 167.99.147.118  
 **Port**: 3000  
 **Process Manager**: PM2  
-**Database**: Neon PostgreSQL  
-**Storage**: DigitalOcean Spaces
+**Database**: Neon PostgreSQL (ep-billowing-pine-ah09chf3-pooler.us-east-1.aws.neon.tech)  
+**Storage**: DigitalOcean Spaces (dat-commercial-2.nyc3.digitaloceanspaces.com)
+**GitHub Repository**: https://github.com/shahrukhfiaz/lb2new
 
 **Deployment Script**: `Server/deploy-new-server.sh`
 
@@ -1220,7 +1311,7 @@ model DatSessionLog {
 
 **Issue**: Session download fails  
 **Solution**:
-1. Check API connection: `curl http://67.205.189.32:3000/api/v1/healthz`
+1. Check API connection: `curl http://167.99.147.118:3000/api/v1/healthz`
 2. Verify session is READY in database
 3. Check Spaces bucket exists and accessible
 4. Verify signed URL generation works
@@ -1332,10 +1423,46 @@ model DatSessionLog {
 - Added session assignment service
 - Added session bundle service (presigned URLs)
 - Added shared session service
-- Added admin panel with multiple tabs (Users, Sessions, Login History, Active Sessions, Security Alerts)
+- Added admin panel with multiple tabs (Users, Sessions, Login History, Active Sessions, Security Alerts, Dashboard, Billing)
 - Added Playwright-based session seeder worker
 - Added geolocation utilities (IP to location, distance calculation)
 - Added device fingerprinting utilities
+- Added billing system (billing cycles, payments, trial periods, auto-disable)
+  - Billing service with cycle calculation, payment tracking, trial management
+  - Billing controller with REST API endpoints
+  - Billing routes protected by admin roles
+  - Background cron job (billing.job.ts) for hourly expired account checks
+  - Payment and BillingHistory models in database
+  - User model extended with billing fields (billingCycle, trialPeriodHours, etc.)
+  - Login authentication checks billing status before allowing access
+- Updated server IP to 167.99.147.118 (from 67.205.189.32)
+- Updated database to new Neon PostgreSQL instance
+- Updated object storage to new DigitalOcean Spaces bucket (dat-commercial-2)
+
+### Admin Panel Enhancements
+- Added Dashboard tab with:
+  - Currently logged-in users widget
+  - Billing overview widget
+  - System statistics (total users, expired accounts, expiring soon)
+  - Auto-refresh every minute
+- Added Billing tab with:
+  - User billing status table
+  - Billing cycle management
+  - Payment recording (with memo/notes)
+  - Trial period management
+  - Payment history modal
+  - Expired accounts alert and auto-disable
+  - Billing statistics cards
+- Enhanced Users tab:
+  - Added "Login Status" column showing online/offline status
+  - Added billing information columns (Billing Cycle, End Date, Days Remaining)
+  - Improved table layout and styling
+  - Better date formatting and status badges
+- Fixed UI/UX issues:
+  - Removed duplicate email column
+  - Fixed table column alignment
+  - Improved modal display (fixed billing popups showing on page load)
+  - Better responsive table container with sticky headers
 
 ---
 
