@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  SUPPORT
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum ProxyProtocol {
+  HTTP
+  HTTPS
+  SOCKS5
+}
+
+enum ProxyHealthStatus {
+  UNKNOWN
+  HEALTHY
+  DEGRADED
+  UNHEALTHY
+}
+
+enum DatSessionStatus {
+  READY
+  PENDING
+  AUTH_ERROR
+  PROXY_ERROR
+  DOWNLOADING
+  UPLOADING
+  DISABLED
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+}
+
+enum SecurityAlertType {
+  MULTIPLE_DEVICE_LOGIN
+  SUSPICIOUS_LOCATION
+  FORCED_LOGOUT
+  FAILED_LOGIN_ATTEMPT
+}
+
+enum SecurityAlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model User {
+  id                   String            @id @default(cuid())
+  email                String            @unique
+  passwordHash         String
+  role                 UserRole          @default(USER)
+  status               UserStatus        @default(ACTIVE)
+  lastLoginAt          DateTime?
+  lastLoginIP          String?
+  currentSessionToken  String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  sessions             DatSession[]      @relation("SessionAssignedUser")
+  auditLogs            AuditLog[]
+  loginHistory         LoginHistory[]
+  sessionActivities    SessionActivity[]
+  securityAlerts       SecurityAlert[]
+}
+
+model Proxy {
+  id             String            @id @default(cuid())
+  name           String
+  host           String
+  port           Int
+  username       String?
+  password       String?
+  protocol       ProxyProtocol     @default(HTTP)
+  healthStatus   ProxyHealthStatus @default(UNKNOWN)
+  lastCheckedAt  DateTime?
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  sessions       DatSession[]
+}
+
+model Domain {
+  id            String       @id @default(cuid())
+  label         String
+  baseUrl       String
+  description   String?
+  isMaintenance Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  sessions      DatSession[]
+}
+
+model DatSession {
+  id              String           @id @default(cuid())
+  name            String           @unique
+  status          DatSessionStatus @default(PENDING)
+  bundleKey       String?
+  bundleChecksum  String?
+  bundleEncryption String?
+  bundleVersion   Int              @default(0)
+  lastLoginAt     DateTime?
+  lastSyncedAt    DateTime?
+  notes           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  proxyId         String?
+  domainId        String?
+  assignedUserId  String?
+
+  proxy           Proxy?           @relation(fields: [proxyId], references: [id])
+  domain          Domain?          @relation(fields: [domainId], references: [id])
+  assignedUser    User?            @relation("SessionAssignedUser", fields: [assignedUserId], references: [id])
+  logs            DatSessionLog[]
+}
+
+model DatSessionLog {
+  id         String   @id @default(cuid())
+  sessionId  String
+  level      LogLevel @default(INFO)
+  message    String
+  context    Json?
+  createdAt  DateTime @default(now())
+
+  session    DatSession @relation(fields: [sessionId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  actor      User?    @relation(fields: [actorId], references: [id])
+}
+
+model LoginHistory {
+  id            String   @id @default(cuid())
+  userId        String
+  email         String
+  ipAddress     String?
+  location      String?
+  city          String?
+  country       String?
+  latitude      Float?
+  longitude     Float?
+  macAddress    String?
+  deviceInfo    String?
+  userAgent     String?
+  success       Boolean  @default(true)
+  failureReason String?
+  loginAt       DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([loginAt])
+  @@index([success])
+}
+
+model SessionActivity {
+  id             String    @id @default(cuid())
+  userId         String
+  sessionToken   String
+  ipAddress      String?
+  location       String?
+  city           String?
+  country        String?
+  latitude       Float?
+  longitude      Float?
+  macAddress     String?
+  deviceInfo     String?
+  userAgent      String?
+  loginAt        DateTime  @default(now())
+  logoutAt       DateTime?
+  lastActivityAt DateTime  @default(now())
+  isActive       Boolean   @default(true)
+  logoutReason   String?
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionToken])
+  @@index([isActive])
+}
+
+model SecurityAlert {
+  id          String                  @id @default(cuid())
+  userId      String?
+  alertType   SecurityAlertType
+  severity    SecurityAlertSeverity   @default(MEDIUM)
+  message     String
+  metadata    Json?
+  isRead      Boolean                 @default(false)
+  isDismissed Boolean                 @default(false)
+  createdAt   DateTime                @default(now())
+
+  user        User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([alertType])
+}
