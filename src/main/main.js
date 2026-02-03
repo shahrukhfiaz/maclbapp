@@ -211,7 +211,7 @@ const validateSessionCompleteness = (sessionDir) => {
 };
 
 const BRAND_NAME = process.env.APP_BRAND_NAME || 'DAT One';
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:4000/api/v1';
+const API_BASE_URL = process.env.API_BASE_URL || 'http://167.99.147.118:3000/api/v1';
 const DEFAULT_DAT_URL = process.env.DEFAULT_DAT_URL || 'https://one.dat.com/search-loads';
 const PROXY_USERNAME =
   process.env.CLOUD_PROXY_USERNAME ||
@@ -827,7 +827,7 @@ app.whenReady().then(() => {
   
   // Use Squid proxy for IP masking
   const cloudProxyEnabled = process.env.CLOUD_PROXY_ENABLED === 'true';
-  const cloudServerIP = process.env.CLOUD_SERVER_IP || '67.205.189.32';
+  const cloudServerIP = process.env.CLOUD_SERVER_IP || '167.99.147.118';
   const proxyPort = process.env.CLOUD_PROXY_PORT || '3128'; // Squid default port
   
   if (cloudProxyEnabled) {
@@ -1507,7 +1507,7 @@ function setupSuperAdminSessionCapture(sessionId) {
     // Verify proxy is being used for DAT page
     const cloudProxyEnabled = process.env.CLOUD_PROXY_ENABLED === 'true';
     if (cloudProxyEnabled) {
-      const proxyServerIP = process.env.CLOUD_SERVER_IP || '67.205.189.32';
+      const proxyServerIP = process.env.CLOUD_SERVER_IP || '167.99.147.118';
       const proxyPort = process.env.CLOUD_PROXY_PORT || '3128';
       logger.log(`🔍 Proxy Verification:`);
       logger.log(`   Proxy Status: ✅ ENABLED`);
@@ -1784,7 +1784,7 @@ async function downloadSessionBundle(sessionId) {
     const https = require('https');
     
     const proxyUrl = process.env.CLOUD_PROXY_ENABLED === 'true' 
-      ? `http://${hasProxyCredentials ? `${PROXY_USERNAME}:${PROXY_PASSWORD}@` : ''}${process.env.CLOUD_SERVER_IP || '67.205.189.32'}:${process.env.CLOUD_PROXY_PORT || '3128'}`
+      ? `http://${hasProxyCredentials ? `${PROXY_USERNAME}:${PROXY_PASSWORD}@` : ''}${process.env.CLOUD_SERVER_IP || '167.99.147.118'}:${process.env.CLOUD_PROXY_PORT || '3128'}`
       : null;
     
     logger.log(`🚀 Downloading through proxy (may provide better routing)...`);
