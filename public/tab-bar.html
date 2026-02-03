@@ -430,7 +430,7 @@
           // Truncate long titles for better display with many tabs (CSS will handle ellipsis, but we can also truncate here)
           const escapedTitle = displayTitle.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
           const originalTitle = tab.title.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-          // No loading indicators - title always stays as "DAT One" unless user edits
+          // No loading indicators - title always stays as "DAT Loadboard" unless user edits
           
           return `
             <div class="dslb-tab ${tab.active ? 'active' : ''}" data-tab-id="${tab.id}" title="${displayTitle.replace(/"/g, '&quot;')}" style="width: ${tabWidth}px;">

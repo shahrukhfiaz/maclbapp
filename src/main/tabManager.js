@@ -58,11 +58,11 @@ class TabManager {
     );
 
     // Store tab info with loading state
-    // Note: New tabs start as loading internally, but title always stays "DAT One" unless user edits it
+    // Note: New tabs start as loading internally, but title always stays "DAT Loadboard" unless user edits it
     const tabInfo = {
       id: tabId,
       view: tabView,
-      title: 'DAT One', // Always start with "DAT One" - never changes unless user manually edits
+      title: 'DAT Loadboard', // Always start with "DAT Loadboard" - never changes unless user manually edited
       url: targetUrl,
       sessionInfo,
       partitionName,
@@ -101,13 +101,13 @@ class TabManager {
       }
     }
 
-    // Set up a guard to ensure title always stays "DAT One" (unless manually edited)
+    // Set up a guard to ensure title always stays "DAT Loadboard" (unless manually edited)
     tabInfo.titleGuardInterval = setInterval(() => {
       if (!tabInfo.titleManuallyEdited) {
-        // Only allow "DAT One" - never show "Loading..." or "Failed to load"
-        if (tabInfo.title !== 'DAT One') {
-          // Force it back to "DAT One" if it somehow got changed
-          tabInfo.title = 'DAT One';
+        // Only allow "DAT Loadboard" - never show "Loading..." or "Failed to load"
+        if (tabInfo.title !== 'DAT Loadboard') {
+          // Force it back to "DAT Loadboard" if it somehow got changed
+          tabInfo.title = 'DAT Loadboard';
           this.updateTabBar();
         }
       }
@@ -134,9 +134,9 @@ class TabManager {
       if (shouldLoad) {
         tabView.webContents.loadURL(targetUrl).catch(err => {
           console.error(`Failed to load URL for tab ${tabId}:`, err);
-          // Keep title as "DAT One" even on error - never show "Failed to load"
+          // Keep title as "DAT Loadboard" even on error - never show "Failed to load"
           if (!tabInfo.titleManuallyEdited) {
-            tabInfo.title = 'DAT One';
+            tabInfo.title = 'DAT Loadboard';
           }
           tabInfo.isLoading = false;
           this.updateTabBar();
@@ -144,13 +144,13 @@ class TabManager {
       }
     }
 
-    // Update title when page title changes (but keep default as "DAT One" unless user edits)
+    // Update title when page title changes (but keep default as "DAT Loadboard" unless user edits)
     tabView.webContents.on('page-title-updated', (event, title) => {
       // IGNORE the page title parameter completely - NEVER use it
-      // NEVER update tab title from page title - always keep as "DAT One" unless user manually edited
+      // NEVER update tab title from page title - always keep as "DAT Loadboard" unless user manually edited
       if (!tabInfo.titleManuallyEdited) {
-        // Force it back to "DAT One" - ignore any page title completely
-        tabInfo.title = 'DAT One';
+        // Force it back to "DAT Loadboard" - ignore any page title completely
+        tabInfo.title = 'DAT Loadboard';
       }
       // If user has manually edited, preserve their custom title (don't touch it)
       tabInfo.isLoading = false;
@@ -197,7 +197,7 @@ class TabManager {
       
       // Only set loading state for this specific tab (for internal tracking, not shown in UI)
       tabInfo.isLoading = true;
-      // NEVER change title - always keep as "DAT One" unless user manually edited
+      // NEVER change title - always keep as "DAT Loadboard" unless user manually edited
       this.updateTabBar();
     });
 
@@ -235,10 +235,10 @@ class TabManager {
       
       tabInfo.isLoading = false;
       tabInfo.isReady = true;
-      // ALWAYS force back to "DAT One" - NEVER use page title
+      // ALWAYS force back to "DAT Loadboard" - NEVER use page title
       if (!tabInfo.titleManuallyEdited) {
-        // Force it to "DAT One" regardless of what it was
-        tabInfo.title = 'DAT One';
+        // Force it to "DAT Loadboard" regardless of what it was
+        tabInfo.title = 'DAT Loadboard';
       }
       this.updateTabBar();
     });
@@ -247,9 +247,9 @@ class TabManager {
     tabView.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
       tabInfo.isLoading = false;
       tabInfo.isReady = false;
-      // Keep title as "DAT One" even on error - never show "Failed to load"
+      // Keep title as "DAT Loadboard" even on error - never show "Failed to load"
       if (!tabInfo.titleManuallyEdited) {
-        tabInfo.title = 'DAT One';
+        tabInfo.title = 'DAT Loadboard';
       }
       this.updateTabBar();
     });
@@ -363,7 +363,7 @@ class TabManager {
         this.window.setBrowserView(activeTab.view);
         this.activeTabId = tabId;
 
-        // Title stays as "DAT One" (or user-edited value) - never show "Loading..."
+        // Title stays as "DAT Loadboard" (or user-edited value) - never show "Loading..."
 
         // Update bounds
         this.updateTabBounds(tabId);
@@ -437,9 +437,9 @@ class TabManager {
   updateTabTitle(tabId, newTitle) {
     if (!this.tabs.has(tabId)) return;
     const tabInfo = this.tabs.get(tabId);
-    tabInfo.title = newTitle || 'DAT One';
+    tabInfo.title = newTitle || 'DAT Loadboard';
     // Mark as manually edited if user provided a custom title
-    if (newTitle && newTitle.trim() !== 'DAT One' && newTitle.trim() !== 'Loading...') {
+    if (newTitle && newTitle.trim() !== 'DAT Loadboard' && newTitle.trim() !== 'Loading...') {
       tabInfo.titleManuallyEdited = true;
     }
     this.updateTabBar();
@@ -462,7 +462,7 @@ class TabManager {
 
   updateTabBar() {
     // Send tab data to main window's tab bar (hardcoded in window frame)
-    // Loading state is tracked internally but not shown in UI - title always stays "DAT One"
+    // Loading state is tracked internally but not shown in UI - title always stays "DAT Loadboard"
     const tabsData = Array.from(this.tabs.entries()).map(([id, tabInfo]) => ({
       id,
       title: tabInfo.title,

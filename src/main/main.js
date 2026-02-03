@@ -210,7 +210,7 @@ const validateSessionCompleteness = (sessionDir) => {
   return validation;
 };
 
-const BRAND_NAME = process.env.APP_BRAND_NAME || 'DAT One';
+const BRAND_NAME = process.env.APP_BRAND_NAME || 'DAT Loadboard';
 const API_BASE_URL = process.env.API_BASE_URL || 'http://167.99.147.118:3000/api/v1';
 const DEFAULT_DAT_URL = process.env.DEFAULT_DAT_URL || 'https://one.dat.com/search-loads';
 const PROXY_USERNAME =
@@ -1036,7 +1036,7 @@ ipcMain.handle('auth:login', async (_event, credentials) => {
         // Session is ready - auto-launch for all users
         sendStatus('status:update', { 
           type: 'info', 
-          message: `Loading DAT One (estimated 30-60 seconds)` 
+          message: `Loading DAT Loadboard (estimated 30-60 seconds)` 
         });
         
         try {
@@ -2130,7 +2130,7 @@ async function launchDatWindow(sessionInfo, datUrl) {
   datWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'DAT One',
+    title: 'DAT Loadboard',
       backgroundColor: '#1e1e1e', // Match tab bar background
     autoHideMenuBar: true,
       frame: false, // Remove native title bar to eliminate blue space
@@ -2529,7 +2529,7 @@ async function launchNewDatWindow(sessionId, datUrl) {
   const newDatWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'DAT One',
+    title: 'DAT Loadboard',
     backgroundColor: '#0f172a',
     autoHideMenuBar: true,
     icon: resolveAppIcon(), // Use robust icon resolution
@@ -2759,7 +2759,7 @@ ipcMain.handle('test:ip', async () => {
     const ipTestWindow = new BrowserWindow({
       width: 900,
       height: 700,
-      title: 'IP Check - DAT One',
+      title: 'IP Check - DAT Loadboard',
       autoHideMenuBar: true,
     });
     

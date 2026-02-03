@@ -261,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
           sessionList.innerHTML = `
             <div class="session-item">
               <h3>${session.name}</h3>
-              <p>Loading DAT One (estimated 30-60 seconds)</p>
+              <p>Loading DAT Loadboard (estimated 30-60 seconds)</p>
               <div class="status-info">
                 <p>✅ DAT will open automatically</p>
                 <p>🔗 You'll be logged in using the master account</p>
@@ -533,7 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
           sessionList.innerHTML = `
             <div class="session-item">
               <h3>${session.name}</h3>
-              <p>Loading DAT One (estimated 30-60 seconds)</p>
+              <p>Loading DAT Loadboard (estimated 30-60 seconds)</p>
               <div class="status-info">
                 <p>✅ DAT will open automatically</p>
                 <p>🔗 You'll be logged in using the master account</p>
