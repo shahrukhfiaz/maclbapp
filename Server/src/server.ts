@@ -9,6 +9,7 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import { connectDatabase } from './db/client';
 import { bootstrapSuperAdmin } from './services/auth.service';
+import { startBillingJob } from './jobs/billing.job';
 
 const app = express();
 
@@ -39,6 +40,9 @@ async function start() {
   try {
     await connectDatabase();
     await bootstrapSuperAdmin('superadmin@digitalstorming.com', 'ChangeMeSuperSecure123!');
+
+    // Start billing background job
+    startBillingJob();
 
     app.listen(env.PORT, () => {
       logger.info('DAT Loadboard backend listening on port ' + env.PORT);

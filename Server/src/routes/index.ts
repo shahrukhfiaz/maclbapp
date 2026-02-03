@@ -7,6 +7,7 @@ import { auditRoutes } from './audit.routes';
 import { loginHistoryRoutes } from './loginHistory.routes';
 import { sessionActivityRoutes } from './sessionActivity.routes';
 import { securityAlertRoutes } from './securityAlert.routes';
+import billingRoutes from './billing.routes';
 
 const router = Router();
 
@@ -29,5 +30,6 @@ router.use('/audits', auditRoutes);
 router.use('/login-history', loginHistoryRoutes);
 router.use('/session-activity', sessionActivityRoutes);
 router.use('/security-alerts', securityAlertRoutes);
+router.use('/billing', billingRoutes);
 
 export default router;

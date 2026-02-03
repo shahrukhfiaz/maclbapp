@@ -1314,7 +1314,13 @@
             </div>
             
             <div class="tabs" id="tabsContainer" style="display: none;">
+                <button class="tab admin-only" onclick="showTab('dashboard')" style="display: none;">
+                    <i class="fas fa-tachometer-alt"></i> Dashboard
+                </button>
                 <button class="tab admin-only" onclick="showTab('users')" style="display: none;">👥 Users</button>
+                <button class="tab admin-only" onclick="showTab('billing')" style="display: none;">
+                    <i class="fas fa-credit-card"></i> Billing
+                </button>
                 <button class="tab admin-only" onclick="showTab('sessions')" style="display: none;">🎯 Sessions</button>
                 <button class="tab admin-only" onclick="showTab('loginHistory')" style="display: none;">📊 Login History</button>
                 <button class="tab admin-only" onclick="showTab('activeSessions')" style="display: none;">🔓 Active Sessions</button>
@@ -1326,6 +1332,131 @@
                 <button class="tab admin-only" onclick="showTab('domains')" style="display: none;">🌍 Domains</button>
             </div>
             
+            <!-- Dashboard Tab -->
+            <div id="dashboard" class="tab-content">
+                <div class="page-header">
+                    <div class="page-title">
+                        <h2><i class="fas fa-tachometer-alt"></i> Dashboard</h2>
+                        <p>Overview of system status and activity</p>
+                    </div>
+                    <div class="page-actions">
+                        <button class="btn btn-secondary" onclick="refreshDashboard()">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Dashboard Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="dashboardTotalUsers">-</div>
+                            <div class="stat-label">Total Users</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-user-check"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="dashboardActiveSessions">-</div>
+                            <div class="stat-label">Currently Logged In</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="dashboardExpiredAccounts">-</div>
+                            <div class="stat-label">Expired Accounts</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="dashboardExpiringSoon">-</div>
+                            <div class="stat-label">Expiring Soon (7 days)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Currently Logged-In Users Widget -->
+                <div class="user-list-container" style="margin-top: 2rem;">
+                    <div class="list-header">
+                        <h3><i class="fas fa-user-check"></i> Currently Logged-In Users</h3>
+                        <div class="list-controls">
+                            <button class="btn btn-secondary" onclick="refreshLoggedInUsers()">
+                                <i class="fas fa-sync"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="user-table-container">
+                        <table class="user-table" id="loggedInUsersTable">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>IP Address</th>
+                                    <th>Location</th>
+                                    <th>Device</th>
+                                    <th>Login Time</th>
+                                    <th>Session Duration</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="loggedInUsersTableBody">
+                                <tr>
+                                    <td colspan="7" class="loading-row">
+                                        <div class="loading-spinner"></div>
+                                        Loading logged-in users...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Billing Overview Widget -->
+                <div class="user-list-container" style="margin-top: 2rem;">
+                    <div class="list-header">
+                        <h3><i class="fas fa-credit-card"></i> Billing Overview</h3>
+                        <div class="list-controls">
+                            <button class="btn btn-info" onclick="checkExpiredAccounts()">
+                                <i class="fas fa-search"></i> Check Expired
+                            </button>
+                        </div>
+                    </div>
+                    <div class="user-table-container">
+                        <table class="user-table" id="billingOverviewTable">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Billing Cycle</th>
+                                    <th>Start Date</th>
+                                    <th>End Date</th>
+                                    <th>Days Remaining</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="billingOverviewTableBody">
+                                <tr>
+                                    <td colspan="7" class="loading-row">
+                                        <div class="loading-spinner"></div>
+                                        Loading billing overview...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- Authentication Tab -->
             <div id="auth" class="tab-content active">
                 <div class="login-container">
@@ -1442,7 +1573,7 @@
                             </thead>
                             <tbody id="userTableBody">
                                 <tr>
-                                    <td colspan="7" class="loading-row">
+                                    <td colspan="10" class="loading-row">
                                         <div class="loading-spinner"></div>
                                         Loading users...
                                     </td>
@@ -1736,6 +1867,134 @@
                 </div>
             </div>
 
+            <!-- Billing Tab -->
+            <div id="billing" class="tab-content">
+                <div class="page-header">
+                    <div class="page-title">
+                        <h2><i class="fas fa-credit-card"></i> Billing Management</h2>
+                        <p>Manage user billing cycles, payments, and trial periods</p>
+                    </div>
+                    <div class="page-actions">
+                        <button class="btn btn-success" onclick="showAddPaymentModal()">
+                            <i class="fas fa-plus"></i> Add Payment
+                        </button>
+                        <button class="btn btn-info" onclick="showSetTrialModal()">
+                            <i class="fas fa-clock"></i> Set Trial
+                        </button>
+                        <button class="btn btn-secondary" onclick="refreshBillingData()">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Billing Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="billingTotalUsers">-</div>
+                            <div class="stat-label">Users with Billing</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="billingExpired">-</div>
+                            <div class="stat-label">Expired Accounts</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="billingExpiringSoon">-</div>
+                            <div class="stat-label">Expiring Soon</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-hourglass-half"></i>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="billingActiveTrials">-</div>
+                            <div class="stat-label">Active Trials</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Expired Accounts Alert -->
+                <div id="expiredAccountsAlert" style="display: none; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-lg); padding: 1.5rem; margin: 2rem 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h3 style="color: #fca5a5; margin: 0 0 0.5rem 0;">
+                                <i class="fas fa-exclamation-triangle"></i> Expired Accounts Detected
+                            </h3>
+                            <p style="color: rgba(255, 255, 255, 0.7); margin: 0;" id="expiredAccountsCount">0 accounts have expired billing cycles or trials.</p>
+                        </div>
+                        <button class="btn btn-danger" onclick="checkAndDisableExpired()">
+                            <i class="fas fa-power-off"></i> Disable Expired Accounts
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Billing List -->
+                <div class="user-list-container">
+                    <div class="list-header">
+                        <h3>User Billing Status</h3>
+                        <div class="list-controls">
+                            <div class="search-box">
+                                <input type="text" id="billingSearch" placeholder="Search users..." onkeyup="filterBillingUsers()">
+                                <i class="fas fa-search"></i>
+                            </div>
+                            <select id="billingCycleFilter" onchange="filterBillingUsers()">
+                                <option value="">All Cycles</option>
+                                <option value="DAILY">Daily</option>
+                                <option value="WEEKLY">Weekly</option>
+                                <option value="MONTHLY">Monthly</option>
+                                <option value="THREE_MONTHS">3 Months</option>
+                                <option value="HALF_YEAR">Half Year</option>
+                                <option value="YEARLY">Yearly</option>
+                            </select>
+                            <select id="billingStatusFilter" onchange="filterBillingUsers()">
+                                <option value="">All Status</option>
+                                <option value="active">Active</option>
+                                <option value="expired">Expired</option>
+                                <option value="expiring_soon">Expiring Soon</option>
+                                <option value="trial">Trial</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="user-table-container">
+                        <table class="user-table" id="billingTable">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Billing Cycle</th>
+                                    <th>Start Date</th>
+                                    <th>End Date</th>
+                                    <th>Days Remaining</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="billingTableBody">
+                                <tr>
+                                    <td colspan="7" class="loading-row">
+                                        <div class="loading-spinner"></div>
+                                        Loading billing data...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- Security Alerts Tab -->
             <div id="securityAlerts" class="tab-content">
                 <div class="page-header">
@@ -1853,6 +2112,125 @@
 
     <!-- Notification Container -->
     <div class="notification-container" id="notificationContainer"></div>
+
+    <!-- Billing Modals -->
+    <!-- Add Payment Modal -->
+    <div id="addPaymentModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); z-index: 2000; display: flex; align-items: center; justify-content: center;">
+        <div style="background: var(--dark-color); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 2rem; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="margin: 0; color: white;"><i class="fas fa-credit-card"></i> Add Payment</h2>
+                <button onclick="closeAddPaymentModal()" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>User Email:</label>
+                <input type="email" id="paymentUserEmail" placeholder="Enter user email" required>
+            </div>
+            <div class="form-group">
+                <label>Billing Cycle:</label>
+                <select id="paymentBillingCycle" required>
+                    <option value="">Select Cycle</option>
+                    <option value="DAILY">Daily</option>
+                    <option value="WEEKLY">Weekly</option>
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="THREE_MONTHS">3 Months</option>
+                    <option value="HALF_YEAR">Half Year</option>
+                    <option value="YEARLY">Yearly</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Amount:</label>
+                <input type="number" id="paymentAmount" placeholder="0.00" step="0.01" min="0" required>
+            </div>
+            <div class="form-group">
+                <label>Memo/Notes:</label>
+                <textarea id="paymentMemo" placeholder="Payment notes (optional)" rows="3"></textarea>
+            </div>
+            <div class="button-group">
+                <button class="btn btn-success" onclick="submitPayment()">
+                    <i class="fas fa-check"></i> Add Payment
+                </button>
+                <button class="btn btn-secondary" onclick="closeAddPaymentModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Set Trial Modal -->
+    <div id="setTrialModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); z-index: 2000; display: flex; align-items: center; justify-content: center;">
+        <div style="background: var(--dark-color); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 2rem; max-width: 500px; width: 90%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="margin: 0; color: white;"><i class="fas fa-clock"></i> Set Trial Period</h2>
+                <button onclick="closeSetTrialModal()" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>User Email:</label>
+                <input type="email" id="trialUserEmail" placeholder="Enter user email" required>
+            </div>
+            <div class="form-group">
+                <label>Trial Period (Hours):</label>
+                <input type="number" id="trialHours" placeholder="24" min="1" required>
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">Enter the number of hours for the trial period</p>
+            </div>
+            <div class="button-group">
+                <button class="btn btn-success" onclick="submitTrial()">
+                    <i class="fas fa-check"></i> Set Trial
+                </button>
+                <button class="btn btn-secondary" onclick="closeSetTrialModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Set Billing Cycle Modal -->
+    <div id="setBillingCycleModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); z-index: 2000; display: flex; align-items: center; justify-content: center;">
+        <div style="background: var(--dark-color); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 2rem; max-width: 500px; width: 90%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="margin: 0; color: white;"><i class="fas fa-calendar"></i> Set Billing Cycle</h2>
+                <button onclick="closeSetBillingCycleModal()" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>User Email:</label>
+                <input type="email" id="cycleUserEmail" placeholder="Enter user email" required>
+            </div>
+            <div class="form-group">
+                <label>Billing Cycle:</label>
+                <select id="cycleType" required>
+                    <option value="">Select Cycle</option>
+                    <option value="DAILY">Daily</option>
+                    <option value="WEEKLY">Weekly</option>
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="THREE_MONTHS">3 Months</option>
+                    <option value="HALF_YEAR">Half Year</option>
+                    <option value="YEARLY">Yearly</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Start Date (optional):</label>
+                <input type="datetime-local" id="cycleStartDate">
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">Leave empty to start from now</p>
+            </div>
+            <div class="button-group">
+                <button class="btn btn-success" onclick="submitBillingCycle()">
+                    <i class="fas fa-check"></i> Set Cycle
+                </button>
+                <button class="btn btn-secondary" onclick="closeSetBillingCycleModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment History Modal -->
+    <div id="paymentHistoryModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); z-index: 2000; display: flex; align-items: center; justify-content: center;">
+        <div style="background: var(--dark-color); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 2rem; max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="margin: 0; color: white;"><i class="fas fa-history"></i> Payment History</h2>
+                <button onclick="closePaymentHistoryModal()" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div id="paymentHistoryContent">
+                <div class="loading-row">
+                    <div class="loading-spinner"></div>
+                    Loading payment history...
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="/admin.js"></script>
 </body>

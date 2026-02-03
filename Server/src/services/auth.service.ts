@@ -8,6 +8,7 @@ import { createSession, invalidateSession, getUserActiveSessions } from './sessi
 import { createMultipleDeviceLoginAlert, createFailedLoginAlert } from './securityAlert.service';
 import { getLocationFromIP, isSuspiciousLocationChange } from '../utils/geolocation';
 import { parseDeviceInfo, getDeviceFingerprint } from '../utils/deviceFingerprint';
+import { checkAndDisableExpiredAccounts } from './billing.service';
 
 export interface AuthTokens {
   accessToken: string;
@@ -71,6 +72,61 @@ export async function login(
     }
     
     throw new AppError('Invalid email or password', 401);
+  }
+
+  // Check billing status before allowing login
+  const now = new Date();
+  let billingError: string | null = null;
+
+  // Check if trial period is expired
+  if (user.isTrialActive && user.trialEndDate) {
+    if (user.trialEndDate < now) {
+      // Auto-disable expired trial
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          status: 'DISABLED',
+          isTrialActive: false,
+          lastBillingCheckAt: now,
+        },
+      });
+      billingError = 'Your trial period has expired. Please contact support to activate your account.';
+    }
+  }
+  // Check if billing cycle is expired
+  else if (user.isBillingActive && user.billingCycleEndDate) {
+    if (user.billingCycleEndDate < now) {
+      // Auto-disable expired billing cycle
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          status: 'DISABLED',
+          isBillingActive: false,
+          lastBillingCheckAt: now,
+        },
+      });
+      billingError = 'Your billing cycle has expired. Please renew your subscription to continue.';
+    }
+  }
+
+  // If billing check resulted in account being disabled, throw error
+  if (billingError) {
+    // Re-fetch user to get updated status
+    const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
+    if (updatedUser && updatedUser.status !== 'ACTIVE') {
+      if (metadata) {
+        await createLoginHistory({
+          userId: user.id,
+          email,
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+          macAddress: metadata.macAddress,
+          success: false,
+          failureReason: billingError,
+        });
+      }
+      throw new AppError(billingError, 403);
+    }
   }
 
   // Verify password

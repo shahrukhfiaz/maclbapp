@@ -1,4 +1,4 @@
-const API_BASE = 'http://67.205.189.32:3000/api/v1';
+const API_BASE = 'http://167.99.147.118:3000/api/v1';
 let authToken = localStorage.getItem('authToken');
 let currentUser = null;
 
@@ -68,7 +68,7 @@ function updateServerTime() {
 
 async function checkServerStatus() {
     try {
-        const response = await fetch('http://67.205.189.32:3000/healthz');
+        const response = await fetch('http://167.99.147.118:3000/healthz');
         if (response.ok) {
             updateStatus('Server Online', '#28a745');
         } else {
@@ -374,13 +374,13 @@ function updateUserStats() {
     document.getElementById('recentUsers').textContent = recentUsers;
 }
 
-function renderUserTable() {
+async function renderUserTable() {
     const tbody = document.getElementById('userTableBody');
     
     if (filteredUsers.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="loading-row">
+                <td colspan="10" class="loading-row">
                     <i class="fas fa-search" style="margin-right: 0.5rem;"></i>
                     No users found matching your criteria
                 </td>
@@ -389,7 +389,49 @@ function renderUserTable() {
         return;
     }
     
-    tbody.innerHTML = filteredUsers.map(user => `
+    // Load billing status for all users
+    const usersWithBilling = await Promise.all(filteredUsers.map(async (user) => {
+        try {
+            const status = await apiCall(`/billing/${user.id}/status`, 'GET', null, false);
+            return { ...user, billing: status };
+        } catch (error) {
+            return { ...user, billing: null };
+        }
+    }));
+    
+    tbody.innerHTML = usersWithBilling.map(user => {
+        const billing = user.billing?.user || {};
+        const now = new Date();
+        let daysRemaining = null;
+        let billingStatusBadge = '<span class="status-badge status-inactive">No Cycle</span>';
+        let cycleEndDate = 'N/A';
+        let billingCycle = 'N/A';
+        
+        if (billing.isTrialActive && billing.trialEndDate) {
+            const endDate = new Date(billing.trialEndDate);
+            const diff = endDate.getTime() - now.getTime();
+            daysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
+            cycleEndDate = formatDate(billing.trialEndDate);
+            billingCycle = 'Trial';
+            billingStatusBadge = daysRemaining > 0 
+                ? `<span class="status-badge status-active">Trial - ${daysRemaining}d</span>`
+                : `<span class="status-badge status-suspended">Trial Expired</span>`;
+        } else if (billing.billingCycle && billing.billingCycleEndDate) {
+            const endDate = new Date(billing.billingCycleEndDate);
+            const diff = endDate.getTime() - now.getTime();
+            daysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
+            cycleEndDate = formatDate(billing.billingCycleEndDate);
+            billingCycle = billing.billingCycle.replace('_', ' ');
+            if (daysRemaining < 0) {
+                billingStatusBadge = '<span class="status-badge status-suspended">Expired</span>';
+            } else if (daysRemaining <= 7) {
+                billingStatusBadge = `<span class="status-badge status-disabled">Expiring - ${daysRemaining}d</span>`;
+            } else {
+                billingStatusBadge = `<span class="status-badge status-active">Active - ${daysRemaining}d</span>`;
+            }
+        }
+        
+        return `
         <tr>
             <td>
                 <div class="user-info">
@@ -413,6 +455,9 @@ function renderUserTable() {
                     ${user.status}
                 </span>
             </td>
+            <td>${billingCycle}</td>
+            <td>${cycleEndDate}</td>
+            <td>${daysRemaining !== null ? daysRemaining : 'N/A'}</td>
             <td>${formatDate(user.createdAt)}</td>
             <td>${user.lastLoginAt ? formatDate(user.lastLoginAt) : 'Never'}</td>
             <td>
@@ -422,6 +467,9 @@ function renderUserTable() {
                     </button>
                     <button class="action-btn password" onclick="changeUserPassword('${user.id}')">
                         <i class="fas fa-key"></i> Password
+                    </button>
+                    <button class="action-btn info" onclick="showAddPaymentModalForUser('${user.id}', '${user.email}')" style="background: #1E4A4A; color: #00D0B0; border-color: #00D0B0;">
+                        <i class="fas fa-credit-card"></i> Payment
                     </button>
                     <button class="action-btn toggle" onclick="toggleUserStatus('${user.id}', '${user.status}')">
                         <i class="fas fa-power-off"></i> ${user.status === 'ACTIVE' ? 'Disable' : 'Enable'}
@@ -434,7 +482,8 @@ function renderUserTable() {
                 </div>
             </td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function filterUsers() {
@@ -464,7 +513,7 @@ function showUserTableError(message) {
     const tbody = document.getElementById('userTableBody');
     tbody.innerHTML = `
         <tr>
-            <td colspan="7" class="loading-row" style="color: #fca5a5;">
+            <td colspan="10" class="loading-row" style="color: #fca5a5;">
                 <i class="fas fa-exclamation-triangle" style="margin-right: 0.5rem;"></i>
                 ${message}
             </td>
@@ -1331,4 +1380,648 @@ showAdminPanel = function() {
     originalShowAdminPanel();
     // Load data for new tabs
     loadSecurityAlerts();
+    loadDashboardData();
 }
+
+// ============================================================================
+// BILLING MANAGEMENT
+// ============================================================================
+
+let allBillingData = [];
+let filteredBillingData = [];
+let loggedInUsers = [];
+
+// Load billing data
+async function loadBillingData() {
+    try {
+        // Get all users with billing info
+        const usersResponse = await apiCall('/users', 'GET', null, false);
+        const users = usersResponse.users || [];
+        
+        // Get billing status for each user
+        allBillingData = [];
+        for (const user of users) {
+            try {
+                const status = await apiCall(`/billing/${user.id}/status`, 'GET', null, false);
+                allBillingData.push({
+                    ...user,
+                    billing: status,
+                });
+            } catch (error) {
+                // User might not have billing set up
+                allBillingData.push({
+                    ...user,
+                    billing: {
+                        isExpired: false,
+                        daysRemaining: null,
+                        statusMessage: 'No billing cycle set',
+                    },
+                });
+            }
+        }
+        
+        filteredBillingData = [...allBillingData];
+        updateBillingStats();
+        renderBillingTable();
+    } catch (error) {
+        console.error('Failed to load billing data:', error);
+        showNotification('Failed to load billing data: ' + error.message, 'error');
+    }
+}
+
+function updateBillingStats() {
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    
+    const withBilling = allBillingData.filter(u => u.billing?.user?.billingCycle || u.billing?.user?.isTrialActive);
+    const expired = allBillingData.filter(u => u.billing?.isExpired);
+    const expiringSoon = allBillingData.filter(u => {
+        if (!u.billing?.user?.billingCycleEndDate && !u.billing?.user?.trialEndDate) return false;
+        const endDate = u.billing?.user?.billingCycleEndDate || u.billing?.user?.trialEndDate;
+        return endDate && new Date(endDate) <= sevenDaysFromNow && new Date(endDate) > now;
+    });
+    const activeTrials = allBillingData.filter(u => u.billing?.user?.isTrialActive);
+    
+    document.getElementById('billingTotalUsers').textContent = withBilling.length;
+    document.getElementById('billingExpired').textContent = expired.length;
+    document.getElementById('billingExpiringSoon').textContent = expiringSoon.length;
+    document.getElementById('billingActiveTrials').textContent = activeTrials.length;
+}
+
+function renderBillingTable() {
+    const tbody = document.getElementById('billingTableBody');
+    
+    if (filteredBillingData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="loading-row">
+                    <i class="fas fa-search"></i> No billing data found
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = filteredBillingData.map(user => {
+        const billing = user.billing?.user || {};
+        const now = new Date();
+        let daysRemaining = null;
+        let statusBadge = '';
+        let endDate = null;
+        
+        if (billing.isTrialActive && billing.trialEndDate) {
+            endDate = new Date(billing.trialEndDate);
+            const diff = endDate.getTime() - now.getTime();
+            daysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
+            statusBadge = daysRemaining > 0 
+                ? `<span class="status-badge status-active">Trial - ${daysRemaining}d left</span>`
+                : `<span class="status-badge status-suspended">Trial Expired</span>`;
+        } else if (billing.billingCycle && billing.billingCycleEndDate) {
+            endDate = new Date(billing.billingCycleEndDate);
+            const diff = endDate.getTime() - now.getTime();
+            daysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
+            if (daysRemaining < 0) {
+                statusBadge = '<span class="status-badge status-suspended">Expired</span>';
+            } else if (daysRemaining <= 7) {
+                statusBadge = `<span class="status-badge status-disabled">Expiring Soon - ${daysRemaining}d</span>`;
+            } else {
+                statusBadge = `<span class="status-badge status-active">Active - ${daysRemaining}d</span>`;
+            }
+        } else {
+            statusBadge = '<span class="status-badge status-inactive">No Cycle Set</span>';
+        }
+        
+        return `
+            <tr>
+                <td>
+                    <div class="user-info">
+                        <div class="user-avatar">${user.email.charAt(0).toUpperCase()}</div>
+                        <div class="user-details">
+                            <h4>${user.email}</h4>
+                            <p>ID: ${user.id}</p>
+                        </div>
+                    </div>
+                </td>
+                <td>${billing.billingCycle ? billing.billingCycle.replace('_', ' ') : 'Trial'}</td>
+                <td>${billing.billingCycleStartDate ? formatDate(billing.billingCycleStartDate) : (billing.trialStartDate ? formatDate(billing.trialStartDate) : 'N/A')}</td>
+                <td>${endDate ? formatDate(endDate.toISOString()) : 'N/A'}</td>
+                <td>${daysRemaining !== null ? daysRemaining : 'N/A'}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="action-btn edit" onclick="showAddPaymentModalForUser('${user.id}', '${user.email}')">
+                            <i class="fas fa-credit-card"></i> Payment
+                        </button>
+                        <button class="action-btn password" onclick="showPaymentHistory('${user.id}')">
+                            <i class="fas fa-history"></i> History
+                        </button>
+                        <button class="action-btn toggle" onclick="showSetBillingCycleModalForUser('${user.id}', '${user.email}')">
+                            <i class="fas fa-calendar"></i> Set Cycle
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function filterBillingUsers() {
+    const searchTerm = document.getElementById('billingSearch').value.toLowerCase();
+    const cycleFilter = document.getElementById('billingCycleFilter').value;
+    const statusFilter = document.getElementById('billingStatusFilter').value;
+    
+    filteredBillingData = allBillingData.filter(user => {
+        const matchesSearch = user.email.toLowerCase().includes(searchTerm);
+        const billing = user.billing?.user || {};
+        const matchesCycle = !cycleFilter || billing.billingCycle === cycleFilter;
+        
+        let matchesStatus = true;
+        if (statusFilter) {
+            const now = new Date();
+            if (statusFilter === 'active') {
+                matchesStatus = !user.billing?.isExpired && (billing.billingCycle || billing.isTrialActive);
+            } else if (statusFilter === 'expired') {
+                matchesStatus = user.billing?.isExpired;
+            } else if (statusFilter === 'expiring_soon') {
+                const endDate = billing.billingCycleEndDate || billing.trialEndDate;
+                if (endDate) {
+                    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+                    matchesStatus = new Date(endDate) <= sevenDaysFromNow && new Date(endDate) > now;
+                } else {
+                    matchesStatus = false;
+                }
+            } else if (statusFilter === 'trial') {
+                matchesStatus = billing.isTrialActive === true;
+            }
+        }
+        
+        return matchesSearch && matchesCycle && matchesStatus;
+    });
+    
+    renderBillingTable();
+}
+
+async function refreshBillingData() {
+    showNotification('Refreshing billing data...', 'info');
+    await loadBillingData();
+    showNotification('Billing data refreshed', 'success');
+}
+
+// Payment Modal Functions
+function showAddPaymentModal() {
+    document.getElementById('addPaymentModal').style.display = 'flex';
+    document.getElementById('paymentUserEmail').value = '';
+    document.getElementById('paymentBillingCycle').value = '';
+    document.getElementById('paymentAmount').value = '';
+    document.getElementById('paymentMemo').value = '';
+}
+
+function showAddPaymentModalForUser(userId, email) {
+    document.getElementById('addPaymentModal').style.display = 'flex';
+    document.getElementById('paymentUserEmail').value = email;
+    document.getElementById('paymentUserEmail').setAttribute('data-user-id', userId);
+    document.getElementById('paymentBillingCycle').value = '';
+    document.getElementById('paymentAmount').value = '';
+    document.getElementById('paymentMemo').value = '';
+}
+
+function closeAddPaymentModal() {
+    document.getElementById('addPaymentModal').style.display = 'none';
+}
+
+async function submitPayment() {
+    const email = document.getElementById('paymentUserEmail').value;
+    const userId = document.getElementById('paymentUserEmail').getAttribute('data-user-id');
+    const cycle = document.getElementById('paymentBillingCycle').value;
+    const amount = parseFloat(document.getElementById('paymentAmount').value);
+    const memo = document.getElementById('paymentMemo').value;
+    
+    if (!email || !cycle || !amount || amount <= 0) {
+        showNotification('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    try {
+        // Find user by email if userId not set
+        let targetUserId = userId;
+        if (!targetUserId) {
+            const usersResponse = await apiCall('/users', 'GET', null, false);
+            const user = usersResponse.users.find(u => u.email === email);
+            if (!user) {
+                showNotification('User not found', 'error');
+                return;
+            }
+            targetUserId = user.id;
+        }
+        
+        await apiCall(`/billing/${targetUserId}/add-payment`, 'POST', {
+            cycle,
+            amount,
+            memo: memo || null,
+        }, false);
+        
+        showNotification('Payment added successfully', 'success');
+        closeAddPaymentModal();
+        await loadBillingData();
+    } catch (error) {
+        showNotification('Failed to add payment: ' + error.message, 'error');
+    }
+}
+
+// Trial Modal Functions
+function showSetTrialModal() {
+    document.getElementById('setTrialModal').style.display = 'flex';
+    document.getElementById('trialUserEmail').value = '';
+    document.getElementById('trialHours').value = '24';
+}
+
+function closeSetTrialModal() {
+    document.getElementById('setTrialModal').style.display = 'none';
+}
+
+async function submitTrial() {
+    const email = document.getElementById('trialUserEmail').value;
+    const hours = parseInt(document.getElementById('trialHours').value);
+    
+    if (!email || !hours || hours <= 0) {
+        showNotification('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    try {
+        const usersResponse = await apiCall('/users', 'GET', null, false);
+        const user = usersResponse.users.find(u => u.email === email);
+        if (!user) {
+            showNotification('User not found', 'error');
+            return;
+        }
+        
+        await apiCall(`/billing/${user.id}/set-trial`, 'POST', { hours }, false);
+        
+        showNotification('Trial period set successfully', 'success');
+        closeSetTrialModal();
+        await loadBillingData();
+    } catch (error) {
+        showNotification('Failed to set trial: ' + error.message, 'error');
+    }
+}
+
+// Billing Cycle Modal Functions
+function showSetBillingCycleModalForUser(userId, email) {
+    document.getElementById('setBillingCycleModal').style.display = 'flex';
+    document.getElementById('cycleUserEmail').value = email;
+    document.getElementById('cycleUserEmail').setAttribute('data-user-id', userId);
+    document.getElementById('cycleType').value = '';
+    document.getElementById('cycleStartDate').value = '';
+}
+
+function closeSetBillingCycleModal() {
+    document.getElementById('setBillingCycleModal').style.display = 'none';
+}
+
+async function submitBillingCycle() {
+    const email = document.getElementById('cycleUserEmail').value;
+    const userId = document.getElementById('cycleUserEmail').getAttribute('data-user-id');
+    const cycle = document.getElementById('cycleType').value;
+    const startDateStr = document.getElementById('cycleStartDate').value;
+    
+    if (!email || !cycle) {
+        showNotification('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    try {
+        let targetUserId = userId;
+        if (!targetUserId) {
+            const usersResponse = await apiCall('/users', 'GET', null, false);
+            const user = usersResponse.users.find(u => u.email === email);
+            if (!user) {
+                showNotification('User not found', 'error');
+                return;
+            }
+            targetUserId = user.id;
+        }
+        
+        const payload = { cycle };
+        if (startDateStr) {
+            payload.startDate = new Date(startDateStr).toISOString();
+        }
+        
+        await apiCall(`/billing/${targetUserId}/start-cycle`, 'POST', payload, false);
+        
+        showNotification('Billing cycle started successfully', 'success');
+        closeSetBillingCycleModal();
+        await loadBillingData();
+    } catch (error) {
+        showNotification('Failed to set billing cycle: ' + error.message, 'error');
+    }
+}
+
+// Payment History Modal
+async function showPaymentHistory(userId) {
+    document.getElementById('paymentHistoryModal').style.display = 'flex';
+    const content = document.getElementById('paymentHistoryContent');
+    content.innerHTML = '<div class="loading-row"><div class="loading-spinner"></div>Loading payment history...</div>';
+    
+    try {
+        const response = await apiCall(`/billing/${userId}/payments`, 'GET', null, false);
+        const payments = response.payments || [];
+        
+        if (payments.length === 0) {
+            content.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 2rem;">No payment history found</p>';
+            return;
+        }
+        
+        content.innerHTML = `
+            <table class="user-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Amount</th>
+                        <th>Cycle</th>
+                        <th>Status</th>
+                        <th>Period</th>
+                        <th>Memo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${payments.map(p => `
+                        <tr>
+                            <td>${formatDate(p.paymentDate)}</td>
+                            <td>$${parseFloat(p.amount).toFixed(2)}</td>
+                            <td>${p.billingCycle.replace('_', ' ')}</td>
+                            <td><span class="status-badge status-${p.status.toLowerCase()}">${p.status}</span></td>
+                            <td>${formatDate(p.cycleStartDate)} - ${formatDate(p.cycleEndDate)}</td>
+                            <td>${p.memo || '-'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } catch (error) {
+        content.innerHTML = `<p style="color: var(--danger-color);">Failed to load payment history: ${error.message}</p>`;
+    }
+}
+
+function closePaymentHistoryModal() {
+    document.getElementById('paymentHistoryModal').style.display = 'none';
+}
+
+async function checkExpiredAccounts() {
+    try {
+        const response = await apiCall('/billing/expired', 'GET', null, false);
+        const expired = response.total || 0;
+        
+        if (expired > 0) {
+            document.getElementById('expiredAccountsCount').textContent = `${expired} account(s) have expired billing cycles or trials.`;
+            document.getElementById('expiredAccountsAlert').style.display = 'block';
+        } else {
+            document.getElementById('expiredAccountsAlert').style.display = 'none';
+        }
+        
+        showNotification(`Found ${expired} expired account(s)`, expired > 0 ? 'warning' : 'success');
+    } catch (error) {
+        showNotification('Failed to check expired accounts: ' + error.message, 'error');
+    }
+}
+
+async function checkAndDisableExpired() {
+    if (!confirm('Are you sure you want to disable all expired accounts? This action cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        const response = await apiCall('/billing/check-expired', 'POST', null, false);
+        showNotification(`Disabled ${response.disabled} expired account(s)`, 'success');
+        await loadBillingData();
+        document.getElementById('expiredAccountsAlert').style.display = 'none';
+    } catch (error) {
+        showNotification('Failed to disable expired accounts: ' + error.message, 'error');
+    }
+}
+
+// ============================================================================
+// DASHBOARD FUNCTIONS
+// ============================================================================
+
+async function loadDashboardData() {
+    await Promise.all([
+        loadLoggedInUsers(),
+        loadBillingOverview(),
+        updateDashboardStats(),
+    ]);
+}
+
+async function loadLoggedInUsers() {
+    try {
+        const response = await apiCall('/session-activity/active', 'GET', null, false);
+        loggedInUsers = response.sessions || [];
+        renderLoggedInUsersTable();
+        
+        document.getElementById('dashboardActiveSessions').textContent = loggedInUsers.length;
+    } catch (error) {
+        console.error('Failed to load logged-in users:', error);
+    }
+}
+
+function renderLoggedInUsersTable() {
+    const tbody = document.getElementById('loggedInUsersTableBody');
+    
+    if (loggedInUsers.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="loading-row">
+                    <i class="fas fa-info-circle"></i> No users currently logged in
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = loggedInUsers.map(session => {
+        const loginTime = new Date(session.loginAt);
+        const now = new Date();
+        const durationMs = now.getTime() - loginTime.getTime();
+        const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
+        const durationMins = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+        const durationStr = durationHours > 0 ? `${durationHours}h ${durationMins}m` : `${durationMins}m`;
+        
+        return `
+            <tr>
+                <td>
+                    <div class="user-info">
+                        <div class="user-avatar">${session.user?.email?.charAt(0).toUpperCase() || '?'}</div>
+                        <div class="user-details">
+                            <h4>${session.user?.email || 'Unknown'}</h4>
+                            <p>ID: ${session.userId}</p>
+                        </div>
+                    </div>
+                </td>
+                <td>${session.ipAddress || 'N/A'}</td>
+                <td>${session.city && session.country ? `${session.city}, ${session.country}` : 'Unknown'}</td>
+                <td>${session.deviceInfo || 'Unknown'}</td>
+                <td>${formatDate(session.loginAt)}</td>
+                <td>${durationStr}</td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="action-btn delete" onclick="forceLogoutSession('${session.id}')">
+                            <i class="fas fa-power-off"></i> Force Logout
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function loadBillingOverview() {
+    try {
+        const usersResponse = await apiCall('/users', 'GET', null, false);
+        const users = usersResponse.users || [];
+        
+        const billingData = [];
+        for (const user of users.slice(0, 20)) { // Limit to 20 for performance
+            try {
+                const status = await apiCall(`/billing/${user.id}/status`, 'GET', null, false);
+                if (status.user.billingCycle || status.user.isTrialActive) {
+                    billingData.push({ ...user, billing: status });
+                }
+            } catch (error) {
+                // Skip users without billing
+            }
+        }
+        
+        renderBillingOverviewTable(billingData);
+    } catch (error) {
+        console.error('Failed to load billing overview:', error);
+    }
+}
+
+function renderBillingOverviewTable(billingData) {
+    const tbody = document.getElementById('billingOverviewTableBody');
+    
+    if (billingData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="loading-row">
+                    <i class="fas fa-info-circle"></i> No billing data available
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = billingData.map(item => {
+        const billing = item.billing?.user || {};
+        const now = new Date();
+        let daysRemaining = null;
+        let statusBadge = '';
+        let endDate = null;
+        
+        if (billing.isTrialActive && billing.trialEndDate) {
+            endDate = new Date(billing.trialEndDate);
+            const diff = endDate.getTime() - now.getTime();
+            daysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
+            statusBadge = daysRemaining > 0 
+                ? `<span class="status-badge status-active">Trial</span>`
+                : `<span class="status-badge status-suspended">Expired</span>`;
+        } else if (billing.billingCycle && billing.billingCycleEndDate) {
+            endDate = new Date(billing.billingCycleEndDate);
+            const diff = endDate.getTime() - now.getTime();
+            daysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
+            if (daysRemaining < 0) {
+                statusBadge = '<span class="status-badge status-suspended">Expired</span>';
+            } else if (daysRemaining <= 7) {
+                statusBadge = `<span class="status-badge status-disabled">Expiring Soon</span>`;
+            } else {
+                statusBadge = `<span class="status-badge status-active">Active</span>`;
+            }
+        } else {
+            statusBadge = '<span class="status-badge status-inactive">No Cycle</span>';
+        }
+        
+        return `
+            <tr>
+                <td>
+                    <div class="user-info">
+                        <div class="user-avatar">${item.email.charAt(0).toUpperCase()}</div>
+                        <div class="user-details">
+                            <h4>${item.email}</h4>
+                        </div>
+                    </div>
+                </td>
+                <td>${billing.billingCycle ? billing.billingCycle.replace('_', ' ') : 'Trial'}</td>
+                <td>${billing.billingCycleStartDate ? formatDate(billing.billingCycleStartDate) : (billing.trialStartDate ? formatDate(billing.trialStartDate) : 'N/A')}</td>
+                <td>${endDate ? formatDate(endDate.toISOString()) : 'N/A'}</td>
+                <td>${daysRemaining !== null ? daysRemaining : 'N/A'}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <button class="action-btn edit" onclick="showTab('billing'); showAddPaymentModalForUser('${item.id}', '${item.email}')">
+                        <i class="fas fa-credit-card"></i> Payment
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function updateDashboardStats() {
+    try {
+        const usersResponse = await apiCall('/users', 'GET', null, false);
+        const users = usersResponse.users || [];
+        
+        const expiredResponse = await apiCall('/billing/expired', 'GET', null, false);
+        const expired = expiredResponse.total || 0;
+        
+        const now = new Date();
+        const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        let expiringSoon = 0;
+        
+        for (const user of users.slice(0, 50)) {
+            try {
+                const status = await apiCall(`/billing/${user.id}/status`, 'GET', null, false);
+                const billing = status.user;
+                const endDate = billing.billingCycleEndDate || billing.trialEndDate;
+                if (endDate) {
+                    const end = new Date(endDate);
+                    if (end <= sevenDaysFromNow && end > now) {
+                        expiringSoon++;
+                    }
+                }
+            } catch (error) {
+                // Skip
+            }
+        }
+        
+        document.getElementById('dashboardTotalUsers').textContent = users.length;
+        document.getElementById('dashboardExpiredAccounts').textContent = expired;
+        document.getElementById('dashboardExpiringSoon').textContent = expiringSoon;
+    } catch (error) {
+        console.error('Failed to update dashboard stats:', error);
+    }
+}
+
+async function refreshDashboard() {
+    showNotification('Refreshing dashboard...', 'info');
+    await loadDashboardData();
+    showNotification('Dashboard refreshed', 'success');
+}
+
+async function refreshLoggedInUsers() {
+    await loadLoggedInUsers();
+    showNotification('Logged-in users refreshed', 'success');
+}
+
+// Auto-refresh dashboard every minute
+setInterval(() => {
+    if (currentUser && authToken && document.getElementById('dashboard').classList.contains('active')) {
+        loadDashboardData();
+    }
+}, 60000);
+
+// Auto-refresh active sessions every 30 seconds
+setInterval(() => {
+    if (currentUser && authToken && document.getElementById('activeSessions').classList.contains('active')) {
+        loadActiveSessions();
+    }
+}, 30000);

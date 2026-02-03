@@ -63,6 +63,22 @@ enum SecurityAlertSeverity {
   CRITICAL
 }
 
+enum BillingCycle {
+  DAILY
+  WEEKLY
+  MONTHLY
+  THREE_MONTHS
+  HALF_YEAR
+  YEARLY
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  PENDING
+  REFUNDED
+}
+
 model User {
   id                   String            @id @default(cuid())
   email                String            @unique
@@ -72,6 +88,15 @@ model User {
   lastLoginAt          DateTime?
   lastLoginIP          String?
   currentSessionToken  String?
+  billingCycle         BillingCycle?
+  billingCycleStartDate DateTime?
+  billingCycleEndDate   DateTime?
+  trialPeriodHours     Int?
+  trialStartDate       DateTime?
+  trialEndDate         DateTime?
+  isTrialActive        Boolean           @default(false)
+  isBillingActive      Boolean           @default(true)
+  lastBillingCheckAt  DateTime?
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
   sessions             DatSession[]      @relation("SessionAssignedUser")
@@ -79,6 +104,8 @@ model User {
   loginHistory         LoginHistory[]
   sessionActivities    SessionActivity[]
   securityAlerts       SecurityAlert[]
+  payments             Payment[]
+  billingHistory       BillingHistory[]
 }
 
 model Proxy {
@@ -222,4 +249,40 @@ model SecurityAlert {
   @@index([isRead])
   @@index([createdAt])
   @@index([alertType])
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  userId        String
+  amount        Decimal
+  billingCycle  BillingCycle
+  status        PaymentStatus @default(PAID)
+  paymentDate   DateTime      @default(now())
+  cycleStartDate DateTime
+  cycleEndDate   DateTime
+  memo          String?
+  createdBy     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([paymentDate])
+  @@index([cycleEndDate])
+}
+
+model BillingHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }
