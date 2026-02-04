@@ -39,10 +39,24 @@ jobs:
       - name: Create macOS icon (512x512)
         run: npm run create-mac-icon
       
+      - name: Clean up any mounted DMG volumes
+        run: |
+          hdiutil detach "/Volumes/DAT Loadboard 2.0.0" 2>/dev/null || true
+          hdiutil detach "/Volumes/DAT Loadboard" 2>/dev/null || true
+        continue-on-error: true
+      
       - name: Build for macOS (Universal)
         run: npm run dist:mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI: true
+      
+      - name: Clean up mounted volumes after build
+        if: always()
+        run: |
+          hdiutil detach "/Volumes/DAT Loadboard 2.0.0" 2>/dev/null || true
+          hdiutil detach "/Volumes/DAT Loadboard" 2>/dev/null || true
+        continue-on-error: true
       
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -52,4 +66,5 @@ jobs:
             release-icon-embed/*.dmg
             release-icon-embed/*.blockmap
           retention-days: 30
+          if-no-files-found: warn
 
