@@ -21,6 +21,12 @@ async function createWindowsIcon() {
   const buildDir = path.join(__dirname, '..', 'build');
   const outputIco = path.join(buildDir, 'icon.ico');
 
+  // Ensure build directory exists
+  if (!fs.existsSync(buildDir)) {
+    fs.mkdirSync(buildDir, { recursive: true });
+    console.log(`📁 Created build directory: ${buildDir}`);
+  }
+
   // Required sizes for Windows ICO - NSIS installer needs these exact sizes
   const requiredSizes = [16, 32, 48, 256];
   
