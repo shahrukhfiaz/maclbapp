@@ -120,6 +120,12 @@ async function createWindowsIcon() {
   // Create ICO file
   // Note: sharp doesn't directly create ICO files, so we'll use to-ico if available
   try {
+    // Ensure build directory exists right before writing (double-check)
+    if (!fs.existsSync(buildDir)) {
+      fs.mkdirSync(buildDir, { recursive: true });
+      console.log(`📁 Created build directory: ${buildDir}`);
+    }
+    
     const toIco = require('to-ico');
     
     // Convert PNG buffers to ICO - to-ico expects array of buffers
